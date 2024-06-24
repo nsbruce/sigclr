@@ -1,4 +1,4 @@
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor, EarlyStopping
 from pytorch_lightning import Trainer, seed_everything
 from lightning.pytorch.strategies import DDPStrategy
 from torchsig.datasets.sig53 import Sig53
@@ -90,6 +90,7 @@ def train_sigclr(hidden_dim=53, lr=0.0001, temperature=0.07, weight_decay=1e-4, 
         callbacks=[
             checkpoint_callback,
             LearningRateMonitor("epoch"),
+            EarlyStopping(monitor="val_loss", mode="min", patience=3, verbose=False)
         ],
         # progress_bar_refresh_rate=1,
     )
