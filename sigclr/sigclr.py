@@ -12,6 +12,7 @@ class SigCLR(LightningModule):
         self.save_hyperparameters()
         assert self.hparams.temperature > 0.0, "The temperature must be a positive float!"
         self.encoder = Encoder(hidden_dim)
+        self.hidden_dim = hidden_dim
         self.temperature = temperature
         self.batch_size=batch_size
         self.hparams.device=device
@@ -25,14 +26,23 @@ class SigCLR(LightningModule):
         #for i in range(batch_size):
         #    self.mask[i, batch_size + i] = 0
         #    self.mask[batch_size + i, i] = 0
+    
+    def projection_head(self, x):
+        x = nn.Linear(self.encoder.convnet.classifier.in_features)(x)
+        x = nn.SiLU(inplace=True)
+        x = nn.Linear(self.hidden_dim, self.encoder.convnet.classifier.out_features, bias=False)(x)
+        return x
+
+
     def forward(self, xi, xj):
-        zi, zj=self.encoder(xi),self.encoder(xj)
-        return zi, zj
+        hi, hj=self.encoder(xi),self.encoder(xj)
+        zi, zj = self.projection_head(hi), self.projection_head(hj) 
+        return zi, zj, hi, hj
 
     def predict(self, x):
         with torch.no_grad():
-            out = self.forward(x)
-        return out
+            zi, zj, hi, hj = self.forward(x)
+        return zi, zj
 
     def configure_optimizers(self):
         optimizer = optim.AdamW(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
@@ -52,7 +62,7 @@ class SigCLR(LightningModule):
             self.mask[i, self.batch_size + i] = 0
             self.mask[self.batch_size + i, i] = 0
             
-        zi,zj = self.forward(xi,xj)
+        zi,zj, hi, hj = self.forward(xi,xj)
         z = torch.cat((zi, zj), dim=0)
         sim = self.similarity(z.unsqueeze(1), z.unsqueeze(0)) / self.temperature
 
