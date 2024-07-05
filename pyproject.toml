@@ -24,7 +24,7 @@ license = "AGPL-3.0-or-later"
 python = ">=3.10,<3.11"
 torchsig = {git = "http://github.com/nsbruce/torchsig.git", branch="feat/support-multiple-inputs"}
 lightning = {extras = ["extra"], version = "^2.3.0"}
-torch = "2.0.1"
+torch = { file = "/cvmfs/soft.computecanada.ca/custom/python/wheelhouse/gentoo/avx2/torch-2.0.1+computecanada-cp310-cp310-linux_x86_64.whl" }
 pytorch-lightning = "^2.3.0"
 numpy = "^2.0.0"
 

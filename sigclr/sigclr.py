@@ -4,20 +4,34 @@ import torch.nn as nn
 import torch
 from sigclr.encoder import Encoder
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+class BatchSync(torch.autograd.Function):
+    """Gathers and Syncs all minibatches from all GPUs into an effective batch."""
+    @staticmethod
+    def forward(ctx, minibatch): #minibatch on each GPU/process 
+        ctx.batch_shape = minibatch.shape
+        batch = [torch.zeros(ctx.batch_shape) for _ in range(torch.distributed.get_world_size())]
+        torch.distributed.all_gather(batch, minibatch)
+        return tuple(batch)
+
+    @staticmethod
+    def backward(ctx, *grads):
+        grad_out = torch.zeros(ctx.batch_shape)
+        grad_out[:] = grads[torch.distributed.get_rank()]
+        return grad_out
 
 class SigCLR(LightningModule):
-    def __init__(self, hidden_dim=53, lr=0.0001, temperature=0.07, weight_decay=1e-4, batch_size=64, max_epochs=500,device='cuda'):
+    def __init__(self, hidden_dim=53, lr=0.0001, temperature=0.07, weight_decay=1e-4, batch_size=64, max_epochs=500, device='cuda'):
         super().__init__()
         self.save_hyperparameters()
         assert self.hparams.temperature > 0.0, "The temperature must be a positive float!"
         self.encoder = Encoder(hidden_dim)
-        self.hidden_dim = hidden_dim
         self.temperature = temperature
         self.batch_size=batch_size
         self.hparams.device=device
         self.similarity = nn.CosineSimilarity(dim=2)
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
+        self.device = device
         
         # Produce Mask to Mask the self when computing the loss
         #self.allN = 2 * batch_size
@@ -26,16 +40,19 @@ class SigCLR(LightningModule):
         #for i in range(batch_size):
         #    self.mask[i, batch_size + i] = 0
         #    self.mask[batch_size + i, i] = 0
-    
-    def projection_head(self, x):
-        x = nn.Linear(self.encoder.convnet.classifier.in_features)(x)
-        x = nn.SiLU(inplace=True)
-        x = nn.Linear(self.hidden_dim, self.encoder.convnet.classifier.out_features, bias=False)(x)
-        return x
 
+        self.projection_head=nn.Sequential(
+            nn.Linear(self.encoder.clsf_in_features,hidden_dim),
+            #nn.BatchNorm1d(self.hidden_dim), #BM: we might this to speed up our training
+            nn.SiLU(inplace=True),
+            nn.Linear(hidden_dim, self.encoder.clsf_out_features, bias=False)
+        )
+        self.world_size=1
+        if torch.distributed.is_initialized():
+            self.world_size=torch.distributed.get_world_size()
 
     def forward(self, xi, xj):
-        hi, hj=self.encoder(xi),self.encoder(xj)
+        hi, hj = self.encoder(xi), self.encoder(xj)
         zi, zj = self.projection_head(hi), self.projection_head(hj) 
         return zi, zj, hi, hj
 
@@ -55,19 +72,26 @@ class SigCLR(LightningModule):
         (xi,xj), _ = batch
         #if xi.shape[0]!=self.batch_size: # Recompute the mask
         self.batch_size=xi.shape[0]
-        self.allN=2*self.batch_size
-        self.mask = torch.ones((self.allN, self.allN), dtype=bool,device=device)
+        self.N=self.batch_size*self.world_size 
+        self.allN=2*self.N #The batch is effectively 2*batch_size*number_of_GPUs batchs from the GPUs/processes
+        
+        self.mask = torch.ones((self.allN, self.allN), dtype=bool,device=self.device)
         self.mask = self.mask.fill_diagonal_(0)
-        for i in range(self.batch_size):
-            self.mask[i, self.batch_size + i] = 0
-            self.mask[self.batch_size + i, i] = 0
+        for i in range(self.N):
+            self.mask[i, self.N + i] = 0
+            self.mask[self.N + i, i] = 0
             
         zi,zj, hi, hj = self.forward(xi,xj)
+	
+	# Gather and sync the rest of minibatches results:
+        if self.world_size > 1:
+            z_i = torch.cat(BatchSync.apply(z_i), dim=0)
+            z_j = torch.cat(BatchSync.apply(z_j), dim=0)
         z = torch.cat((zi, zj), dim=0)
         sim = self.similarity(z.unsqueeze(1), z.unsqueeze(0)) / self.temperature
 
-        sim_i_j = torch.diag(sim, self.batch_size)
-        sim_j_i = torch.diag(sim, -self.batch_size)
+        sim_i_j = torch.diag(sim, self.N)
+        sim_j_i = torch.diag(sim, -self.N)
 
         positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(self.allN, 1)
         negative_samples = sim[self.mask].reshape(self.allN, -1)

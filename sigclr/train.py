@@ -93,6 +93,7 @@ def train_sigclr(hidden_dim=53, lr=0.0001, temperature=0.07, weight_decay=1e-4, 
             EarlyStopping(monitor="val_loss", mode="min", patience=3, verbose=False)
         ],
         # progress_bar_refresh_rate=1,
+        sync_batchnorm=True
     )
     trainer.logger._default_hp_metric = None  # Optional logging argument that we don't need
 
