@@ -21,12 +21,12 @@ classifiers = [
 license = "AGPL-3.0-or-later"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.11"
-torchsig = {git = "http://github.com/nsbruce/torchsig.git", branch="feat/support-multiple-inputs"}
-lightning = {extras = ["extra"], version = "^2.3.0"}
-torch = { file = "/cvmfs/soft.computecanada.ca/custom/python/wheelhouse/gentoo/avx2/torch-2.0.1+computecanada-cp310-cp310-linux_x86_64.whl" }
-pytorch-lightning = "^2.3.0"
-numpy = "^2.0.0"
+python = "^3.11"
+torchsig = {git = "http://github.com/nsbruce/torchsig.git", branch="feat/bump-versions"}
+torch = "2.3.0"
+pytorch-lightning = "^2.3.3"
+lightning = {extras = ["extra"], version = "^2.3.3"}
+numpy = "<2"
 
 [tool.poetry.group.dev]
 # optional dependencies only used for development and testing
@@ -35,21 +35,19 @@ optional = true
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.2"
 flake8 = "^7.1.0"
-mypy = "^1.10.0"
+mypy = "^1.10.1"
 isort = "^5.13.2"
-tensorboard = "^2.17.0"
-torch-tb-profiler = "^0.4.3"
 
 [tool.pytest.ini_options]
 testpaths = "tests"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 check_untyped_defs = true
 plugins = "numpy.typing.mypy_plugin"
 
 [tool.black]
-target-version = ["py310"]
+target-version = ["py311"]
 preview=true
 
 [tool.isort]

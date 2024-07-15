@@ -161,8 +161,6 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-OLD_saved_models
 saved_models
 digital_alliance
 venv*
-also_old_saved_models

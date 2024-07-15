@@ -9,7 +9,8 @@ import os
 import datetime
 import click
 from sigclr.dataset import SigCLRDataset
-from sigclr import SigCLR
+from sigclr.sigclr import SigCLR
+
 
 torch.set_float32_matmul_precision('medium')
 num_workers = os.cpu_count()//4
