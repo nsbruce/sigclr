@@ -2,7 +2,7 @@ from pytorch_lightning import LightningModule
 from torch import optim
 import torch.nn as nn
 import torch
-from sigclr.encoder import Encoder
+from encoder import Encoder
 
 
 class BatchSync(torch.autograd.Function):
@@ -25,13 +25,22 @@ class SigCLR(LightningModule):
         super().__init__()
         self.save_hyperparameters()
         assert self.hparams.temperature > 0.0, "The temperature must be a positive float!"
-        self.encoder = Encoder(hidden_dim)
+
+        self.encoder = Encoder()
+        # freeze the pretrained convnet
+        self.encoder.backbone.eval()
+        self.encoder.backbone.requires_grad = False
+        # send to device
+        self.encoder.to(device)
+
         self.temperature = temperature
         self.batch_size=batch_size
         self.hparams.device=device
         self.similarity = nn.CosineSimilarity(dim=2)
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
-        self.device = device
+
+        # in lightning don't set device, let it handle internally
+        # self.device = device
         
         # Produce Mask to Mask the self when computing the loss
         #self.allN = 2 * batch_size
@@ -42,10 +51,10 @@ class SigCLR(LightningModule):
         #    self.mask[batch_size + i, i] = 0
 
         self.projection_head=nn.Sequential(
-            nn.Linear(self.encoder.clsf_in_features,hidden_dim),
-            #nn.BatchNorm1d(self.hidden_dim), #BM: we might this to speed up our training
+            nn.Linear(self.encoder.neck_out_features,hidden_dim),
+            nn.BatchNorm1d(hidden_dim), #BM: we might this to speed up our training
             nn.SiLU(inplace=True),
-            nn.Linear(hidden_dim, self.encoder.clsf_out_features, bias=False)
+            nn.Linear(hidden_dim, self.encoder.neck_out_features, bias=False)
         )
         self.world_size=1
         if torch.distributed.is_initialized():
@@ -88,6 +97,7 @@ class SigCLR(LightningModule):
             z_i = torch.cat(BatchSync.apply(z_i), dim=0)
             z_j = torch.cat(BatchSync.apply(z_j), dim=0)
         z = torch.cat((zi, zj), dim=0)
+        
         sim = self.similarity(z.unsqueeze(1), z.unsqueeze(0)) / self.temperature
 
         sim_i_j = torch.diag(sim, self.N)
@@ -102,7 +112,7 @@ class SigCLR(LightningModule):
         loss /= self.allN
 
         # Logging loss
-        self.log(mode + "_loss", loss, sync_dist=True, on_step=False, on_epoch=True,prog_bar=True)
+        self.log(mode + "_loss", loss, sync_dist=True, on_step=True, on_epoch=True,prog_bar=True)
 
         return loss
 

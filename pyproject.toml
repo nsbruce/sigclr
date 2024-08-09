@@ -22,8 +22,9 @@ license = "AGPL-3.0-or-later"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-torchsig = {git = "http://github.com/nsbruce/torchsig.git", branch="feat/bump-versions"}
-torch = "2.3.0"
+torchsig = {git = "http://github.com/TorchDSP/torchsig.git", tag="v0.5.0"}
+torch = { file = "/cvmfs/soft.computecanada.ca/custom/python/wheelhouse/gentoo/avx2/torch-2.0.1+computecanada-cp311-cp311-linux_x86_64.whl" }
+# torch = "2.3.0"
 pytorch-lightning = "^2.3.3"
 lightning = {extras = ["extra"], version = "^2.3.3"}
 numpy = "<2"

@@ -3,17 +3,30 @@ import torch.nn as nn
 import torch
 
 class Encoder(nn.Module):
-    def __init__(self, pretrained=True,path="/project/def-msteve/torchsig-pretrained-models/sig53/efficientnet_b4_online.pt",device='cuda'):
+    def __init__(self, pretrained=True,path="/project/def-msteve/torchsig-pretrained-models/sig53/efficientnet_b4_online.pt",neck_out_features=53, neck_hidden_features=512,dropout_rate=0.2):
         super().__init__()
-        self.convnet = efficientnet_b4(pretrained=pretrained, path=path)
+        self.backbone = efficientnet_b4(pretrained=pretrained, path=path)
+        self.neck_out_features=neck_out_features
+        self.neck_hidden_features=neck_hidden_features
+        self.clsf_in_features=self.backbone.classifier.in_features 
+        self.clsf_out_features=self.backbone.classifier.out_features
+        self.backbone.classifier = nn.Identity()
+        # freeze the backbone
+        self.backbone.requires_grad_(False)       
+        self.backbone.eval()
 
-        self.clsf_in_features=self.convnet.classifier.in_features 
-        self.clsf_out_features=self.convnet.classifier.out_features
-        self.convnet.classifier = None
+        self.neck = nn.Sequential(
+            nn.Linear(self.clsf_in_features, self.neck_hidden_features),
+            nn.BatchNorm1d(self.neck_hidden_features),
+            nn.SiLU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(self.neck_hidden_features, self.neck_out_features)
+        )
 
-        self.convnet = self.convnet.to(device)
     def forward(self, x):
-        return self.convnet(x)
+        x = self.backbone(x)
+        x = self.neck(x)
+        return x
 
     def predict(self, x):
         with torch.no_grad():

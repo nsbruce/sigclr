@@ -8,10 +8,10 @@ import torch
 import os
 import datetime
 import click
-from sigclr.dataset import SigCLRDataset
-from sigclr.sigclr import SigCLR
+from dataset import SigCLRDataset
+from sigclr import SigCLR
 
-
+runID=os.getenv("RUNID","medsig53")
 torch.set_float32_matmul_precision('medium')
 num_workers = os.cpu_count()//4
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -31,28 +31,30 @@ contrast_transforms = [
     ST.Clip(),
     ST.SpectralInversion(),
 ]
+
 # Specify Sig53 Options
-root = "/project/def-msteve/torchsig/sig53/"
+root_train = os.getenv("ROOT_TRAIN","/project/def-msteve/torchsig/sig53/")
+root_val = os.getenv("ROOT_VAL","/project/def-msteve/torchsig/sig53/") 
 train = True
-impaired = False
+impaired = True
 class_list = list(Sig53._idx_to_name_dict.values())
 
 target_transform = ST.DescToClassIndex(class_list=class_list)
 
-# Instantiate the Sig53 Clean Training Dataset
-sig53_clean_train = SigCLRDataset(Sig53(
-    root=root, 
+# Instantiate the Sig53 Training Dataset
+sig53_train = SigCLRDataset(Sig53(
+    root=root_train, 
     train=train, 
     impaired=impaired,
     transform=None,
     target_transform=target_transform,
     use_signal_data=True,
 ), transforms=contrast_transforms)
-
-# Instantiate the Sig53 Clean Validation Dataset
+print(f'Our training data comes from {root_train}, and has {len(sig53_train)} impaired signals')
+# Instantiate the Sig53 Validation Dataset
 train = False
-sig53_clean_val = SigCLRDataset(Sig53(
-    root=root, 
+sig53_val = SigCLRDataset(Sig53(
+    root=root_val, 
     train=train, 
     impaired=impaired,
     transform=None,
@@ -60,7 +62,9 @@ sig53_clean_val = SigCLRDataset(Sig53(
     use_signal_data=True,
 ),transforms=contrast_transforms)
 
-CHECKPOINT_PATH = "./saved_models/"
+print(f'Our validation data comes from {root_val}, and has {len(sig53_val)} impaired signals')
+# Instantiate the Sig53 Validation Dataset
+CHECKPOINT_PATH = f"./saved_models_{runID}/"
 
 @click.command()
 @click.option('--batch_size', default=32, help='Batch size used during training and validation.')
@@ -86,12 +90,13 @@ def train_sigclr(hidden_dim=53, lr=0.0001, temperature=0.07, weight_decay=1e-4, 
         max_epochs=epochs,
         strategy='ddp',
         #check_val_every_n_epoch=val_every,
-        val_check_interval=500,
+        val_check_interval=100,
         enable_progress_bar=False,
+        num_nodes=int(os.environ.get("SLURM_JOB_NUM_NODES","1")),
         callbacks=[
             checkpoint_callback,
             LearningRateMonitor("epoch"),
-            EarlyStopping(monitor="val_loss", mode="min", patience=3, verbose=False)
+            EarlyStopping(monitor="val_loss", mode="min", patience=100, verbose=False)
         ],
         # progress_bar_refresh_rate=1,
         sync_batchnorm=True
@@ -99,7 +104,7 @@ def train_sigclr(hidden_dim=53, lr=0.0001, temperature=0.07, weight_decay=1e-4, 
     trainer.logger._default_hp_metric = None  # Optional logging argument that we don't need
 
     train_loader = DataLoader(
-            sig53_clean_train,
+            sig53_train,
             batch_size=batch_size,
             shuffle=True,
             drop_last=True,
@@ -107,7 +112,7 @@ def train_sigclr(hidden_dim=53, lr=0.0001, temperature=0.07, weight_decay=1e-4, 
             num_workers=num_workers,
         )
     val_loader = DataLoader(
-            sig53_clean_val,
+            sig53_val,
             batch_size=batch_size,
             shuffle=False,
             drop_last=False,
