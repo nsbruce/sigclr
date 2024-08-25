@@ -67,13 +67,18 @@ class SigCLR(LightningModule):
 
     def predict(self, x):
         with torch.no_grad():
-            zi, zj, hi, hj = self.forward(x)
-        return zi, zj
+            # zi, zj, hi, hj = self.forward(x)
+            h = self.encoder(x)
+            z = self.projection_head(h)
+        return z, h
 
     def configure_optimizers(self):
         optimizer = optim.AdamW(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
         lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=self.hparams.max_epochs, eta_min=self.hparams.lr / 50
+            optimizer,
+            # T_max=self.hparams.max_epochs,
+            T_max=3,
+            eta_min=self.hparams.lr / 50
         )
         return [optimizer], [lr_scheduler]
 

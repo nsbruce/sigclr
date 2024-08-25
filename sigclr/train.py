@@ -11,14 +11,6 @@ import click
 from dataset import SigCLRDataset
 from sigclr import SigCLR
 
-runID=os.getenv("RUNID","medsig53")
-torch.set_float32_matmul_precision('medium')
-num_workers = os.cpu_count()//4
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-torch.backends.cudnn.deterministic = True
-
-print(f"Using device: {device}")
-print(f"Number of workers: {num_workers}")
 
 contrast_transforms = [
     ST.TimeVaryingNoise(),
@@ -32,39 +24,53 @@ contrast_transforms = [
     ST.SpectralInversion(),
 ]
 
-# Specify Sig53 Options
-root_train = os.getenv("ROOT_TRAIN","/project/def-msteve/torchsig/sig53/")
-root_val = os.getenv("ROOT_VAL","/project/def-msteve/torchsig/sig53/") 
-train = True
-impaired = True
-class_list = list(Sig53._idx_to_name_dict.values())
-
-target_transform = ST.DescToClassIndex(class_list=class_list)
-
-# Instantiate the Sig53 Training Dataset
-sig53_train = SigCLRDataset(Sig53(
-    root=root_train, 
-    train=train, 
-    impaired=impaired,
-    transform=None,
-    target_transform=target_transform,
-    use_signal_data=True,
-), transforms=contrast_transforms)
-print(f'Our training data comes from {root_train}, and has {len(sig53_train)} impaired signals')
-# Instantiate the Sig53 Validation Dataset
-train = False
-sig53_val = SigCLRDataset(Sig53(
-    root=root_val, 
-    train=train, 
-    impaired=impaired,
-    transform=None,
-    target_transform=target_transform,
-    use_signal_data=True,
-),transforms=contrast_transforms)
-
-print(f'Our validation data comes from {root_val}, and has {len(sig53_val)} impaired signals')
-# Instantiate the Sig53 Validation Dataset
+runID=os.getenv("RUNID","medsig53")
 CHECKPOINT_PATH = f"./saved_models_{runID}/"
+root_train = os.getenv("ROOT_TRAIN")#,"/project/def-msteve/torchsig/sig53/")
+root_val = os.getenv("ROOT_VAL")#,"/project/def-msteve/torchsig/sig53/") 
+
+def setup():
+    torch.set_float32_matmul_precision('medium')
+    num_workers = os.cpu_count()//4
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch.backends.cudnn.deterministic = True
+
+    print(f"Using device: {device}")
+    print(f"Number of workers: {num_workers}")
+
+
+    # Specify Sig53 Options
+    train = True
+    impaired = True
+    class_list = list(Sig53._idx_to_name_dict.values())
+
+    target_transform = ST.DescToClassIndex(class_list=class_list)
+
+    # Instantiate the Sig53 Training Dataset
+    sig53_train = SigCLRDataset(Sig53(
+        root=root_train, 
+        train=train, 
+        impaired=impaired,
+        transform=None,
+        target_transform=target_transform,
+        use_signal_data=True,
+    ), transforms=contrast_transforms)
+    print(f'Our training data comes from {root_train}, and has {len(sig53_train)} impaired signals')
+    # Instantiate the Sig53 Validation Dataset
+    train = False
+    sig53_val = SigCLRDataset(Sig53(
+        root=root_val, 
+        train=train, 
+        impaired=impaired,
+        transform=None,
+        target_transform=target_transform,
+        use_signal_data=True,
+    ),transforms=contrast_transforms)
+
+    print(f'Our validation data comes from {root_val}, and has {len(sig53_val)} impaired signals')
+
+    return sig53_train, sig53_val
+
 
 @click.command()
 @click.option('--batch_size', default=32, help='Batch size used during training and validation.')
@@ -79,6 +85,10 @@ CHECKPOINT_PATH = f"./saved_models_{runID}/"
 @click.option('--val_every', default=10, help='Run validation every val_every epochs.')
 @click.option('--ckpt_file', default='last.ckpt', help='Restart from a previous checkpointed model. Provide the file ')
 def train_sigclr(hidden_dim=53, lr=0.0001, temperature=0.07, weight_decay=1e-4, batch_size=64, epochs=500,device='cuda',val_every=10,restart=0,ckpt_file="./saved_models/sigCLR.ckpt",num_workers=4):
+
+    sig53_train, sig53_val = setup()
+
+    
     accel="gpu" if str(device) == "cuda" else "cpu"
     checkpoint_callback = ModelCheckpoint(dirpath=CHECKPOINT_PATH, every_n_epochs=1, mode="min", 
                                 monitor="val_loss", save_top_k=3,save_last=True)
@@ -96,7 +106,7 @@ def train_sigclr(hidden_dim=53, lr=0.0001, temperature=0.07, weight_decay=1e-4, 
         callbacks=[
             checkpoint_callback,
             LearningRateMonitor("epoch"),
-            EarlyStopping(monitor="val_loss", mode="min", patience=100, verbose=False)
+            # EarlyStopping(monitor="val_loss", mode="min", patience=100, verbose=False)
         ],
         # progress_bar_refresh_rate=1,
         sync_batchnorm=True
