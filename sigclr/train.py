@@ -25,7 +25,7 @@ contrast_transforms = [
     ST.SpectralInversion(),
 ]
 
-runID=os.getenv("RUNID","medsig53")
+runID=os.getenv("RUNID","unknown")
 CHECKPOINT_PATH = f"./saved_models_{runID}/"
 root_train = os.getenv("ROOT_TRAIN")#,"/project/def-msteve/torchsig/sig53/")
 root_val = os.getenv("ROOT_VAL")#,"/project/def-msteve/torchsig/sig53/") 
