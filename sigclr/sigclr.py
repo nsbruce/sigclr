@@ -2,7 +2,7 @@ from pytorch_lightning import LightningModule
 from torch import optim
 import torch.nn as nn
 import torch
-from encoder import Encoder
+from sigclr.encoder import Encoder
 
 
 class BatchSync(torch.autograd.Function):
@@ -21,7 +21,7 @@ class BatchSync(torch.autograd.Function):
         return grad_out
 
 class SigCLR(LightningModule):
-    def __init__(self, hidden_dim=53, lr=0.0001, temperature=0.07, weight_decay=1e-4, batch_size=64, max_epochs=500, device='cuda', freeze_backbone: bool=True):
+    def __init__(self, hidden_dim, lr, temperature, weight_decay, batch_size, max_epochs, device, freeze_backbone):
         super().__init__()
         self.save_hyperparameters()
         assert self.hparams.temperature > 0.0, "The temperature must be a positive float!"
@@ -40,17 +40,6 @@ class SigCLR(LightningModule):
         self.hparams.device=device
         self.similarity = nn.CosineSimilarity(dim=2)
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
-
-        # in lightning don't set device, let it handle internally
-        # self.device = device
-        
-        # Produce Mask to Mask the self when computing the loss
-        #self.allN = 2 * batch_size
-        #self.mask = torch.ones((self.allN, self.allN), dtype=bool,device=device)
-        #self.mask = self.mask.fill_diagonal_(0)
-        #for i in range(batch_size):
-        #    self.mask[i, batch_size + i] = 0
-        #    self.mask[batch_size + i, i] = 0
 
         self.projection_head=nn.Sequential(
             nn.Linear(self.encoder.neck_out_features,hidden_dim),
