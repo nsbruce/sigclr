@@ -1,6 +1,7 @@
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor, EarlyStopping
 from pytorch_lightning import Trainer, seed_everything
-from lightning.pytorch.strategies import DDPStrategy
+# from lightning.pytorch.strategies import DDPStrategy
+from pytorch_lightning.strategies import DDPStrategy
 from torchsig.datasets.sig53 import Sig53
 from torch.utils.data import DataLoader
 import torchsig.transforms as ST
@@ -84,7 +85,7 @@ def setup():
 @click.option('--temperature', default=0.07, help='Temperature rate used for ntXent loss computation.')
 @click.option('--val_every', default=10, help='Run validation every val_every epochs.')
 @click.option('--ckpt_file', default='last.ckpt', help='Restart from a previous checkpointed model. Provide the file ')
-def train_sigclr(hidden_dim=53, lr=0.0001, temperature=0.07, weight_decay=1e-4, batch_size=64, epochs=500,device='cuda',val_every=10,restart=0,ckpt_file="./saved_models/sigCLR.ckpt",num_workers=4):
+def train_sigclr(hidden_dim, lr, temperature, weight_decay, batch_size, epochs, device, val_every, restart, ckpt_file ,num_workers):
 
     sig53_train, sig53_val = setup()
 
@@ -98,7 +99,7 @@ def train_sigclr(hidden_dim=53, lr=0.0001, temperature=0.07, weight_decay=1e-4, 
         devices=-1,
         accelerator=accel,
         max_epochs=epochs,
-        strategy='ddp',
+        strategy=ddp,#'ddp',
         #check_val_every_n_epoch=val_every,
         val_check_interval=100,
         enable_progress_bar=False,
@@ -139,7 +140,7 @@ def train_sigclr(hidden_dim=53, lr=0.0001, temperature=0.07, weight_decay=1e-4, 
         model = SigCLR.load_from_checkpoint(checkpoint_callback.best_model_path)
     else:
         seed_everything(42)  # To be reproducable
-        model = SigCLR(hidden_dim=hidden_dim, lr=lr, temperature=temperature, weight_decay=weight_decay, batch_size=batch_size, max_epochs=epochs,device=device)
+        model = SigCLR(hidden_dim=hidden_dim, lr=lr, temperature=temperature, weight_decay=weight_decay, batch_size=batch_size, max_epochs=epochs, device=device)
         trainer.fit(model, train_loader, val_loader)
         # Load best checkpoint after training
         model = SigCLR.load_from_checkpoint(checkpoint_callback.best_model_path)

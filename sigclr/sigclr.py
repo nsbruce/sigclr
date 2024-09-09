@@ -21,15 +21,17 @@ class BatchSync(torch.autograd.Function):
         return grad_out
 
 class SigCLR(LightningModule):
-    def __init__(self, hidden_dim=53, lr=0.0001, temperature=0.07, weight_decay=1e-4, batch_size=64, max_epochs=500, device='cuda'):
+    def __init__(self, hidden_dim=53, lr=0.0001, temperature=0.07, weight_decay=1e-4, batch_size=64, max_epochs=500, device='cuda', freeze_backbone: bool=True):
         super().__init__()
         self.save_hyperparameters()
         assert self.hparams.temperature > 0.0, "The temperature must be a positive float!"
 
         self.encoder = Encoder()
-        # freeze the pretrained convnet
-        self.encoder.backbone.eval()
-        self.encoder.backbone.requires_grad = False
+        if freeze_backbone:
+            # freeze the pretrained convnet
+            self.encoder.backbone.eval()
+            self.encoder.backbone.requires_grad = False
+
         # send to device
         self.encoder.to(device)
 
