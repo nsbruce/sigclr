@@ -25,8 +25,7 @@ contrast_transforms = [
     ST.SpectralInversion(),
 ]
 
-runID=os.getenv("RUNID","unknown")
-CHECKPOINT_PATH = f"./saved_models_{runID}/"
+CHECKPOINT_PATH=os.getenv("CHECKPOINT_PATH")
 root_train = os.getenv("ROOT_TRAIN")#,"/project/def-msteve/torchsig/sig53/")
 root_val = os.getenv("ROOT_VAL")#,"/project/def-msteve/torchsig/sig53/") 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -73,21 +72,21 @@ def setup(impaired: bool):
 
 
 @click.command()
-@click.option('--batch_size', default=32, help='Batch size used during training and validation.')
-@click.option('--num_workers', default=4, help='The number of workers.')
-@click.option('--hidden_dim', default=53, help='Dimension of the hidden layer.')
+@click.option('--batch-size', default=32, help='Batch size used during training and validation.')
 @click.option('--epochs', default=100, help='Number of epochs during training.')
+@click.option('--use-impaired-data', is_flag=True, default=False, type=bool, help='Whether to use the impaired (true) or clean (false) training and validation data')
+@click.option('--freeze-backbone', is_flag=True, default=False, type=bool, help='Freeze the underlying encoder weights')
+@click.option('--use-pretrained-encoder', is_flag=True, default=False, type=bool, help='Whether to use pretrained weights for the underlying encoder')
+@click.option('--encoder-architecture', type=str, default='efficientnetb4', help="'efficientnetb4' or 'resnet50'")
+@click.option('--num-workers', default=4, help='The number of workers.')
 @click.option('--checkpoint-file', help='Restarts from the provided previous checkpointed model file.')
-@click.option('--use-impaired-data', is_flag=True, default=True, type=bool, help='Whether to use the impaired (true) or clean (false) training and validation data')
-@click.option('--freeze-backbone', is_flag=True, default=True, type=bool, help='Freeze the underlying encoder weights')
-def train_sigclr(batch_size, epochs, device, checkpoint_file ,num_workers, use_impaired_data, freeze_backbone):
+def train_sigclr(batch_size, epochs, use_impaired_data, freeze_backbone, use_pretrained_encoder, encoder_architecture, num_workers, checkpoint_file):
 
     lr=0.001  # for optimizer
     hidden_dim=53  # dimension of the hidden layer
     weight_decay=1e-4  # for optimizer
     temperature=0.07  # for ntXent loss computation
-
-
+    
     sig53_train, sig53_val = setup(use_impaired_data)
 
     
@@ -131,10 +130,10 @@ def train_sigclr(batch_size, epochs, device, checkpoint_file ,num_workers, use_i
         )
     # If a pretrained model was passed, load it and train some more.
     if checkpoint_file is not None and os.path.isfile(checkpoint_file):
-        print(f"Found pretrained model at {checkpoint_file}, ignoring any passed arguments for freezing the backbone.")
+        print(f"Was provided pretrained weights at {checkpoint_file}, ignoring any passed arguments for freezing the backbone, not using a pretrained encoder, selecting encoder architecture.")
         # Automatically loads the model with the saved hyperparameters
         model = SigCLR.load_from_checkpoint(checkpoint_file)
-        trainer.fit(model, train_loader, val_loader,ckpt_path=checkpoint_file)
+        trainer.fit(model, train_loader, val_loader, ckpt_path=checkpoint_file)
         # Load best checkpoint after training
         model = SigCLR.load_from_checkpoint(checkpoint_callback.best_model_path)
     # if a pretrained model was passed which doesn't exist, raise an error
@@ -142,9 +141,9 @@ def train_sigclr(batch_size, epochs, device, checkpoint_file ,num_workers, use_i
         raise RuntimeError(f"A checkpoint file was passed, but was not found ({checkpoint_file})")
     # if no pretrained model was passed, build a new model
     else:
-        print("No pretrained model was passed. Instantiating a new one.")
+        print("No pretrained weights passed. Instantiating a new model.")
         seed_everything(42)  # To be reproducable
-        model = SigCLR(hidden_dim=hidden_dim, lr=lr, temperature=temperature, weight_decay=weight_decay, batch_size=batch_size, max_epochs=epochs, device=device, freeze_backbone=freeze_backbone)
+        model = SigCLR(hidden_dim=hidden_dim, lr=lr, temperature=temperature, weight_decay=weight_decay, batch_size=batch_size, max_epochs=epochs, device=device, freeze_backbone=freeze_backbone, use_pretrained_encoder=use_pretrained_encoder, encoder_architecture=encoder_architecture)
         trainer.fit(model, train_loader, val_loader)
         # Load best checkpoint after training
         model = SigCLR.load_from_checkpoint(checkpoint_callback.best_model_path)

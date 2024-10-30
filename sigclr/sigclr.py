@@ -2,7 +2,8 @@ from pytorch_lightning import LightningModule
 from torch import optim
 import torch.nn as nn
 import torch
-from sigclr.encoder import Encoder
+from sigclr.encoder import EfficientNetB4Encoder, ResNet50Encoder
+from typing import Literal
 
 
 class BatchSync(torch.autograd.Function):
@@ -21,12 +22,20 @@ class BatchSync(torch.autograd.Function):
         return grad_out
 
 class SigCLR(LightningModule):
-    def __init__(self, hidden_dim, lr, temperature, weight_decay, batch_size, max_epochs, device, freeze_backbone):
+    def __init__(self, hidden_dim: int, lr: float, temperature: float, weight_decay: float, batch_size: int, max_epochs: int, device: torch.device, freeze_backbone: bool, use_pretrained_encoder: bool, encoder_architecture: Literal['resnet50', 'efficientnetb4']):
         super().__init__()
         self.save_hyperparameters()
         assert self.hparams.temperature > 0.0, "The temperature must be a positive float!"
 
-        self.encoder = Encoder()
+        if encoder_architecture == 'efficientnetb4':
+            self.encoder = EfficientNetB4Encoder(pretrained=use_pretrained_encoder)
+        elif encoder_architecture == 'resnet50':
+            if use_pretrained_encoder:
+                raise ValueError('Pretrained encoder requested but not available for resnet50')
+            self.encoder = ResNet50Encoder()
+        else:
+            raise ValueError('invalid encoder_architecture passed', encoder_architecture)
+
         if freeze_backbone:
             # freeze the pretrained convnet
             self.encoder.backbone.eval()
