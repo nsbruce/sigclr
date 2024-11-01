@@ -166,3 +166,4 @@ digital_alliance
 venv*
 .venv*
 .data
+.devcontainer
