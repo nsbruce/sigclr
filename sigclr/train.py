@@ -30,7 +30,7 @@ CHECKPOINT_PATH = f"./saved_models_{runID}/"
 root_train = os.getenv("ROOT_TRAIN")#,"/project/def-msteve/torchsig/sig53/")
 root_val = os.getenv("ROOT_VAL")#,"/project/def-msteve/torchsig/sig53/") 
 
-def setup():
+def setup(use_impaired_data: bool):
     torch.set_float32_matmul_precision('medium')
     num_workers = os.cpu_count()//4
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -42,7 +42,7 @@ def setup():
 
     # Specify Sig53 Options
     train = True
-    impaired = True
+    impaired = use_impaired_data
     class_list = list(Sig53._idx_to_name_dict.values())
 
     target_transform = ST.DescToClassIndex(class_list=class_list)
@@ -85,9 +85,11 @@ def setup():
 @click.option('--temperature', default=0.07, help='Temperature rate used for ntXent loss computation.')
 @click.option('--val_every', default=10, help='Run validation every val_every epochs.')
 @click.option('--ckpt_file', default='last.ckpt', help='Restart from a previous checkpointed model. Provide the file ')
-def train_sigclr(hidden_dim, lr, temperature, weight_decay, batch_size, epochs, device, val_every, restart, ckpt_file ,num_workers):
+@click.option('--freeze-backbone', is_flag=True, default=False, type=bool, help='Freeze the underlying encoder weights')
+@click.option('--use-impaired-data', is_flag=True, default=False, type=bool, help='Whether to use the impaired (true) or clean (false) training and validation data')
+def train_sigclr(hidden_dim, lr, temperature, weight_decay, batch_size, epochs, device, val_every, restart, ckpt_file ,num_workers, freeze_backbone: bool, use_impaired_data: bool):
 
-    sig53_train, sig53_val = setup()
+    sig53_train, sig53_val = setup(use_impaired_data)
 
     
     accel="gpu" if str(device) == "cuda" else "cpu"
@@ -132,15 +134,23 @@ def train_sigclr(hidden_dim, lr, temperature, weight_decay, batch_size, epochs, 
         )
     # If restart and the pretrained model exists, load it and train some more.
     if restart and os.path.isfile(ckpt_file):
-        print(f"Found pretrained model at {ckpt_file}, loading...")
+        print(f"Found weights for model at {ckpt_file}, loading...")
         # Automatically loads the model with the saved hyperparameters
         model = SigCLR.load_from_checkpoint(ckpt_file)
-        trainer.fit(model, train_loader, val_loader,ckpt_path=ckpt_file)
+        if freeze_backbone:
+            print('freezing backbone after loading weights for model')
+            model.encoder.backbone.eval()
+            model.encoder.backbone.requires_grad = True
+        else:
+            print('unfreezing backbone after loading weights for model')
+            model.encoder.backbone.train()
+            model.encoder.backbone.requires_grad = True
+        trainer.fit(model, train_loader, val_loader, ckpt_path=ckpt_file)
         # Load best checkpoint after training
         model = SigCLR.load_from_checkpoint(checkpoint_callback.best_model_path)
     else:
         seed_everything(42)  # To be reproducable
-        model = SigCLR(hidden_dim=hidden_dim, lr=lr, temperature=temperature, weight_decay=weight_decay, batch_size=batch_size, max_epochs=epochs, device=device)
+        model = SigCLR(hidden_dim=hidden_dim, lr=lr, temperature=temperature, weight_decay=weight_decay, batch_size=batch_size, max_epochs=epochs, device=device, freeze_backbone=freeze_backbone)
         trainer.fit(model, train_loader, val_loader)
         # Load best checkpoint after training
         model = SigCLR.load_from_checkpoint(checkpoint_callback.best_model_path)
