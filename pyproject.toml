@@ -22,9 +22,11 @@ license = "AGPL-3.0-or-later"
 
 [tool.poetry.dependencies]
 python = "^3.12"
-torchsig = {git = "http://github.com/TorchDSP/torchsig.git", tag="v0.6.0"}
+torchsig = {git = "https://github.com/TorchDSP/torchsig.git", rev = "v0.6.0"}
 # torch = { file = "/cvmfs/soft.computecanada.ca/custom/python/wheelhouse/gentoo/avx2/torch-2.3.1+computecanada-cp311-cp311-linux_x86_64.whl" }
 lightning = {extras = ["extras"], version = "^2.4.0"}
+plotly = "^5.24.1"
+kaleido = "0.2.1"
 
 [tool.poetry.group.dev]
 # optional dependencies only used for development and testing

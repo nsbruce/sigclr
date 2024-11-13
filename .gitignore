@@ -167,3 +167,4 @@ venv*
 .venv*
 .data
 .devcontainer
+*.npy

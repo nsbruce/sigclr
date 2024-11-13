@@ -2,7 +2,7 @@ from pytorch_lightning import LightningModule
 from torch import optim
 import torch.nn as nn
 import torch
-from sigclr.encoder import EfficientNetB4Encoder, ResNet50Encoder
+from encoder import EfficientNetB4Encoder, ResNet50Encoder
 from typing import Literal
 
 
