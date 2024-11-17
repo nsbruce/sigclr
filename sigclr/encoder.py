@@ -6,7 +6,7 @@ import timm
 from torchsig.models.model_utils.model_utils_1d.conversions_to_1d import convert_2d_model_to_1d
 
 class EfficientNetB4Encoder(nn.Module):
-    def __init__(self, pretrained=True,path="/project/def-msteve/torchsig-pretrained-models/sig53/efficientnet_b4_online.pt",neck_out_features=53, neck_hidden_features=512,dropout_rate=0.2):
+    def __init__(self, pretrained=True,path="/project/def-msteve/torchsig-pretrained-models/sig53/efficientnet_b4_online.pt", neck_out_features=53, neck_hidden_features=512, dropout_rate=0.2):
         super().__init__()
         # self.backbone = efficientnet_b4(pretrained=pretrained, path=path)
         self.backbone = EfficientNet1d(
@@ -45,12 +45,16 @@ class EfficientNetB4Encoder(nn.Module):
         return out
 
 class ResNet50Encoder(nn.Module):
-    def __init__(self):
+    def __init__(self, num_output_features: int):
         super().__init__()
-        self.neck_out_features=53
-        self.model = convert_2d_model_to_1d(timm.create_model("resnet50", in_chans=2, num_classes=self.neck_out_features))
+        self.model = convert_2d_model_to_1d(timm.create_model("resnet50", in_chans=2, num_classes=self.num_output_features))
+
 
     def forward(self, x):
+        # we don't distinguish between the backbone and the neck here because we're not
+        # using pre-trained weights so we don't need to remove any sort of
+        # classification layers
+        self.model(x)
         return self.model(x)
 
     def predict(self, x):
