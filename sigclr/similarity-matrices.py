@@ -28,7 +28,7 @@ def cli():
 @click.option("--save-similarities-npy", type=bool, default=False)
 @click.option('--save-html', type=bool, default=True)
 @click.option('--show', type=bool, default=False)
-def weights_to_confusion(weights_file: Path | None, save_latent_pkl: bool, save_similarities_npy: bool, save_html: bool, show: bool) -> None:
+def weights_to_similarity_matrices(weights_file: Path | None, save_latent_pkl: bool, save_similarities_npy: bool, save_html: bool, show: bool) -> None:
 
     print('loading dataset')
     root_qa = os.getenv("ROOT_VAL","/project/def-msteve/torchsig/sig53_qa/")
@@ -129,17 +129,17 @@ def weights_to_confusion(weights_file: Path | None, save_latent_pkl: bool, save_
     fig.add_trace(go.Heatmap(z=similarities_z, x=categories, y=categories), row=1, col=2)
     fig.update_layout(title_text=stem)
     if save_html:
-        fig.write_html(f'confusion-{stem}.html')
+        fig.write_html(f'similarity-matrix-{stem}.html')
     if show:
         fig.show()
 
 @cli.command
 @click.option("--npy-file", type=click.Path(path_type=Path))
 @click.option('--show', type=bool, default=False)
-@click.option('--image-name', type=str, default='confusion.png')
+@click.option('--image-name', type=str, default='similarity-matrix.png')
 @click.option('--collapse-mod-classes', type=bool, default=False)
 @click.option('--collapse-similar-mod-classes', type=bool, default=False)
-def similarities_to_collapsed_confusion(npy_file: Path, show: bool, image_name: str, collapse_mod_classes: bool, collapse_similar_mod_classes: bool) -> None:
+def similarities_to_collapsed_similarity_matrix(npy_file: Path, show: bool, image_name: str, collapse_mod_classes: bool, collapse_similar_mod_classes: bool) -> None:
     SIGCLR_CLASSES: list = [
         "ook",
         "bpsk",
