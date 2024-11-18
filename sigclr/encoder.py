@@ -47,14 +47,21 @@ class EfficientNetB4Encoder(nn.Module):
 class ResNet50Encoder(nn.Module):
     def __init__(self, num_output_features: int):
         super().__init__()
-        self.model = convert_2d_model_to_1d(timm.create_model("resnet50", in_chans=2, num_classes=self.num_output_features))
+        backbone = convert_2d_model_to_1d(timm.create_model("resnet50", in_chans=2, pretrained=False))#num_classes=num_output_features))
+        # remove the classification head (fully connected layer) and output embeddings
+        # instead of logits
+        backbone.reset_classifier(num_classes=0, global_pool="avg")
+
+        neck = nn.Sequential(
+            nn.Linear(backbone.num_features, num_output_features),
+            nn.ReLU(),
+            nn.Linear(num_output_features, num_output_features)
+        )
+
+        self.model = nn.Sequential(backbone, neck)
 
 
     def forward(self, x):
-        # we don't distinguish between the backbone and the neck here because we're not
-        # using pre-trained weights so we don't need to remove any sort of
-        # classification layers
-        self.model(x)
         return self.model(x)
 
     def predict(self, x):
