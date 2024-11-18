@@ -7,31 +7,7 @@ import os
 import tqdm
 import numpy as np
 import click
-
-SIGCLR_CLASSES: list = [
-        "bpsk",
-        "qpsk",
-        "8ask",
-        "8psk",
-        "16qam",
-        "16ask",
-        "16psk",
-        "32qam",
-        "32ask",
-        "32psk",
-        "2fsk",
-        "2gfsk",
-        "2msk",
-        "2gmsk",
-        "4fsk",
-        "8fsk",
-        "8msk",
-        "16fsk",
-        "fm",
-        "am-dsb",
-        "am-usb",
-        "lfm_radar",
-    ]
+from modulation_classes import SIGCLR_CLASSES
 
 @dataclass
 class SigCLRNarrowbandCleanTrainConfig(conf.NarrowbandCleanTrainConfig):
