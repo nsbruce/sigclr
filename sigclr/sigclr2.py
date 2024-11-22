@@ -2,44 +2,16 @@ from pytorch_lightning import LightningModule
 from torch import optim
 import torch.nn as nn
 import torch
-from sigclr.encoders import EfficientNetB4Encoder, ResNet50Encoder
-from typing import Literal
+from sigclr.encoders import ResNet50Encoder
 
-
-class BatchSync(torch.autograd.Function):
-    """Gathers and Syncs all minibatches from all GPUs into an effective batch."""
-    @staticmethod
-    def forward(ctx, minibatch): #minibatch on each GPU/process 
-        ctx.batch_shape = minibatch.shape
-        batch = [torch.zeros(ctx.batch_shape) for _ in range(torch.distributed.get_world_size())]
-        torch.distributed.all_gather(batch, minibatch)
-        return tuple(batch)
-
-    @staticmethod
-    def backward(ctx, *grads):
-        grad_out = torch.zeros(ctx.batch_shape)
-        grad_out[:] = grads[torch.distributed.get_rank()]
-        return grad_out
 
 class SigCLR(LightningModule):
-    def __init__(self, hidden_dim: int, lr: float, temperature: float, weight_decay: float, batch_size: int, max_epochs: int, device: torch.device, freeze_backbone: bool, use_pretrained_encoder: bool, encoder_architecture: Literal['resnet50', 'efficientnetb4'], num_encoder_output_features: int):
+    def __init__(self, hidden_dim: int, lr: float, temperature: float, weight_decay: float, batch_size: int, max_epochs: int, device: torch.device, num_encoder_output_features: int):
         super().__init__()
         self.save_hyperparameters()
         assert self.hparams.temperature > 0.0, "The temperature must be a positive float!"
 
-        if encoder_architecture == 'efficientnetb4':
-            self.encoder = EfficientNetB4Encoder(pretrained=use_pretrained_encoder, neck_out_features=num_encoder_output_features)
-        elif encoder_architecture == 'resnet50':
-            if use_pretrained_encoder:
-                raise ValueError('Pretrained encoder requested but not available for resnet50')
-            self.encoder = ResNet50Encoder(num_output_features = num_encoder_output_features)
-        else:
-            raise ValueError('invalid encoder_architecture passed', encoder_architecture)
-
-        if freeze_backbone:
-            # freeze the pretrained convnet
-            self.encoder.backbone.eval()
-            self.encoder.backbone.requires_grad = False
+        self.encoder = ResNet50Encoder(num_output_features = num_encoder_output_features)
 
         # send to device
         self.encoder.to(device)
@@ -51,14 +23,11 @@ class SigCLR(LightningModule):
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
 
         self.projection_head=nn.Sequential(
-            nn.Linear(self.encoder.neck_out_features,hidden_dim),
+            nn.Linear(self.encoder.num_output_features,hidden_dim),
             nn.BatchNorm1d(hidden_dim), #BM: we might this to speed up our training
             nn.SiLU(inplace=True),
-            nn.Linear(hidden_dim, self.encoder.neck_out_features, bias=False)
+            nn.Linear(hidden_dim, self.encoder.num_output_features, bias=False)
         )
-        self.world_size=1
-        if torch.distributed.is_initialized():
-            self.world_size=torch.distributed.get_world_size()
 
     def forward(self, xi, xj):
         hi, hj = self.encoder(xi), self.encoder(xj)
@@ -67,20 +36,13 @@ class SigCLR(LightningModule):
 
     def predict(self, x):
         with torch.no_grad():
-            # zi, zj, hi, hj = self.forward(x)
             h = self.encoder(x)
             z = self.projection_head(h)
         return z, h
 
     def configure_optimizers(self):
         optimizer = optim.AdamW(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
-        lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
-            optimizer,
-            # T_max=self.hparams.max_epochs,
-            T_max=3,
-            eta_min=self.hparams.lr / 50
-        )
-        return [optimizer], [lr_scheduler]
+        return optimizer
 
     def ntXent_loss(self, batch, mode="train"):
         (xi,xj), _ = batch
@@ -120,11 +82,22 @@ class SigCLR(LightningModule):
         self.log(mode + "_loss", loss, sync_dist=True, on_step=True, on_epoch=True,prog_bar=True)
 
         return loss
+    
+    def normalized_temp_scaled_cross_entropy_loss(self, zi, zj) -> float:
+        # z = torch.cat((zi, zj), dim=0)
+        sim = self.similarity(zi, zj) / self.temperature
+
 
     def training_step(self, batch, batch_idx):
-        return self.ntXent_loss(batch, mode="train")
+        print("BATCH SHAPE", batch.shape)
+        (xi, xj), _ = batch
+        zi, zj, hi, hj = self.forward(xi, xj)
+        print("ZI, ZJ SHAPES", zi.shape, zj.shape)
+        return 0.0
+        loss = self.normalized_temp_scaled_cross_entropy_loss(zi, zj)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        return loss
+        # return self.ntXent_loss(batch, mode="train")
 
     def validation_step(self, batch, batch_idx):
         return self.ntXent_loss(batch, mode="val")
-
-c
