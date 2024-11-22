@@ -2,7 +2,7 @@ from pytorch_lightning import LightningModule
 from torch import optim
 import torch.nn as nn
 import torch
-from encoder import EfficientNetB4Encoder, ResNet50Encoder
+from sigclr.encoder import EfficientNetB4Encoder, ResNet50Encoder
 from typing import Literal
 
 
@@ -145,10 +145,10 @@ class SimplerSigCLR(LightningModule):
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
 
         self.projection_head=nn.Sequential(
-            nn.Linear(self.encoder.neck_out_features,hidden_dim),
+            nn.Linear(self.encoder.num_output_features,hidden_dim),
             nn.BatchNorm1d(hidden_dim), #BM: we might this to speed up our training
             nn.SiLU(inplace=True),
-            nn.Linear(hidden_dim, self.encoder.neck_out_features, bias=False)
+            nn.Linear(hidden_dim, self.encoder.num_output_features, bias=False)
         )
 
     def forward(self, xi, xj):
@@ -211,8 +211,11 @@ class SimplerSigCLR(LightningModule):
 
 
     def training_step(self, batch, batch_idx):
+        print("BATCH SHAPE", batch.shape)
         (xi, xj), _ = batch
         zi, zj, hi, hj = self.forward(xi, xj)
+        print("ZI, ZJ SHAPES", zi.shape, zj.shape)
+        return 0.0
         loss = self.normalized_temp_scaled_cross_entropy_loss(zi, zj)
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss

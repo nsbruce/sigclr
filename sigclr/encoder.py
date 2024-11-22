@@ -47,6 +47,7 @@ class EfficientNetB4Encoder(nn.Module):
 class ResNet50Encoder(nn.Module):
     def __init__(self, num_output_features: int):
         super().__init__()
+        self.num_output_features = num_output_features
         backbone = convert_2d_model_to_1d(timm.create_model("resnet50", in_chans=2, pretrained=False))#num_classes=num_output_features))
         # remove the classification head (fully connected layer) and output embeddings
         # instead of logits

@@ -2,7 +2,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor, Ea
 from pytorch_lightning import Trainer, seed_everything
 # from lightning.pytorch.strategies import DDPStrategy
 from pytorch_lightning.strategies import DDPStrategy
-from torchsig.datasets.sig53 import Sig53
+from torchsig.datasets.torchsig_narrowband import TorchSigNarrowband
 from torch.utils.data import DataLoader
 import torchsig.transforms as ST
 import torch
@@ -10,8 +10,8 @@ import os
 import datetime
 import click
 from sigclr.dataset import SigCLRDataset
-from sigclr.sigclr import SigCLR
-
+from sigclr.sigclr import SigCLR, SimplerSigCLR
+from sigclr.modulation_classes import SIGCLR_CLASSES
 
 contrast_transforms = [
     ST.TimeVaryingNoise(),
@@ -41,12 +41,12 @@ def setup(impaired: bool):
 
     # Specify Sig53 Options
     train = True
-    class_list = list(Sig53._idx_to_name_dict.values())
+    # class_list = list(TorchSigNarrowband._idx_to_name_dict.values())
 
-    target_transform = ST.DescToClassIndex(class_list=class_list)
+    target_transform = ST.DescToClassIndex(class_list=SIGCLR_CLASSES)
 
     # Instantiate the Sig53 Training Dataset
-    sig53_train = SigCLRDataset(Sig53(
+    sig53_train = SigCLRDataset(TorchSigNarrowband(
         root=root_train, 
         train=train, 
         impaired=impaired,
@@ -57,7 +57,7 @@ def setup(impaired: bool):
     print(f'Our training data comes from {root_train}, and has {len(sig53_train)} signals')
     # Instantiate the Sig53 Validation Dataset
     train = False
-    sig53_val = SigCLRDataset(Sig53(
+    sig53_val = SigCLRDataset(TorchSigNarrowband(
         root=root_val, 
         train=train, 
         impaired=impaired,
@@ -83,7 +83,7 @@ def setup(impaired: bool):
 def train_sigclr(batch_size, epochs, use_impaired_data, freeze_backbone, use_pretrained_encoder, encoder_architecture, num_workers, checkpoint_file):
 
     lr=0.001  # for optimizer
-    hidden_dim=53  # dimension of the hidden layer
+    hidden_dim=256  # dimension of the hidden layer
     weight_decay=1e-4  # for optimizer
     temperature=0.07  # for ntXent loss computation
     
@@ -132,10 +132,10 @@ def train_sigclr(batch_size, epochs, use_impaired_data, freeze_backbone, use_pre
     if checkpoint_file is not None and os.path.isfile(checkpoint_file):
         print(f"Was provided pretrained weights at {checkpoint_file}, ignoring any passed arguments for freezing the backbone, not using a pretrained encoder, selecting encoder architecture.")
         # Automatically loads the model with the saved hyperparameters
-        model = SigCLR.load_from_checkpoint(checkpoint_file)
+        model = SimplerSigCLR.load_from_checkpoint(checkpoint_file)
         trainer.fit(model, train_loader, val_loader, ckpt_path=checkpoint_file)
         # Load best checkpoint after training
-        model = SigCLR.load_from_checkpoint(checkpoint_callback.best_model_path)
+        model = SimplerSigCLR.load_from_checkpoint(checkpoint_callback.best_model_path)
     # if a pretrained model was passed which doesn't exist, raise an error
     elif checkpoint_file is not None and not os.path.isfile(checkpoint_file):
         raise RuntimeError(f"A checkpoint file was passed, but was not found ({checkpoint_file})")
@@ -143,10 +143,11 @@ def train_sigclr(batch_size, epochs, use_impaired_data, freeze_backbone, use_pre
     else:
         print("No pretrained weights passed. Instantiating a new model.")
         seed_everything(42)  # To be reproducable
-        model = SigCLR(hidden_dim=hidden_dim, lr=lr, temperature=temperature, weight_decay=weight_decay, batch_size=batch_size, max_epochs=epochs, device=device, freeze_backbone=freeze_backbone, use_pretrained_encoder=use_pretrained_encoder, encoder_architecture=encoder_architecture)
+        # model = SigCLR(hidden_dim=hidden_dim, lr=lr, temperature=temperature, weight_decay=weight_decay, batch_size=batch_size, max_epochs=epochs, device=device, freeze_backbone=freeze_backbone, use_pretrained_encoder=use_pretrained_encoder, encoder_architecture=encoder_architecture)
+        model = SimplerSigCLR(hidden_dim=hidden_dim, lr=lr, temperature=temperature, weight_decay=weight_decay, batch_size=batch_size, max_epochs=epochs, device=device, num_encoder_output_features=64)
         trainer.fit(model, train_loader, val_loader)
         # Load best checkpoint after training
-        model = SigCLR.load_from_checkpoint(checkpoint_callback.best_model_path)
+        model = SimplerSigCLR.load_from_checkpoint(checkpoint_callback.best_model_path)
 
     return model
 
