@@ -7,7 +7,7 @@ import os
 import tqdm
 import numpy as np
 import click
-from modulation_classes import SIGCLR_CLASSES
+from sigclr.modulation_classes import SIGCLR_CLASSES
 
 @dataclass
 class SigCLRNarrowbandCleanTrainConfig(conf.NarrowbandCleanTrainConfig):

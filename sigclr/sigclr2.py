@@ -6,27 +6,28 @@ from sigclr.encoders import ResNet50Encoder
 
 
 class SigCLR(LightningModule):
-    def __init__(self, hidden_dim: int, lr: float, temperature: float, weight_decay: float, batch_size: int, max_epochs: int, device: torch.device, num_encoder_output_features: int):
+    def __init__(self, lr: float, temperature: float, weight_decay: float):
         super().__init__()
         self.save_hyperparameters()
         assert self.hparams.temperature > 0.0, "The temperature must be a positive float!"
 
-        self.encoder = ResNet50Encoder(num_output_features = num_encoder_output_features)
+        self.encoder = ResNet50Encoder(in_chans=2, pretrained=False)
 
-        # send to device
-        self.encoder.to(device)
+        print("Device type:", self.device)
+
+        self.encoder.to(self.device)
 
         self.temperature = temperature
-        self.batch_size=batch_size
-        self.hparams.device=device
-        self.similarity = nn.CosineSimilarity(dim=2)
+        self.similarity = nn.CosineSimilarity(dim=1)
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
 
+        # the output of the resnet 50 encoder is the embedding space of size 2048. We 
+        # reduce this in the projection head to a smaller latent space of 128 for the
+        # contrastive loss computation. 2048 and 128 are typical numbers.
         self.projection_head=nn.Sequential(
-            nn.Linear(self.encoder.num_output_features,hidden_dim),
-            nn.BatchNorm1d(hidden_dim), #BM: we might this to speed up our training
-            nn.SiLU(inplace=True),
-            nn.Linear(hidden_dim, self.encoder.num_output_features, bias=False)
+            nn.Linear(self.encoder.backbone.num_features, 512),
+            nn.ReLU(),
+            nn.Linear(512, 128)
         )
 
     def forward(self, xi, xj):
@@ -43,61 +44,25 @@ class SigCLR(LightningModule):
     def configure_optimizers(self):
         optimizer = optim.AdamW(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
         return optimizer
-
-    def ntXent_loss(self, batch, mode="train"):
-        (xi,xj), _ = batch
-        #if xi.shape[0]!=self.batch_size: # Recompute the mask
-        self.batch_size=xi.shape[0]
-        self.N=self.batch_size*self.world_size 
-        self.allN=2*self.N #The batch is effectively 2*batch_size*number_of_GPUs batchs from the GPUs/processes
-        
-        self.mask = torch.ones((self.allN, self.allN), dtype=bool,device=self.device)
-        self.mask = self.mask.fill_diagonal_(0)
-        for i in range(self.N):
-            self.mask[i, self.N + i] = 0
-            self.mask[self.N + i, i] = 0
-            
-        zi,zj, hi, hj = self.forward(xi,xj)
-	
-	# Gather and sync the rest of minibatches results:
-        if self.world_size > 1:
-            z_i = torch.cat(BatchSync.apply(z_i), dim=0)
-            z_j = torch.cat(BatchSync.apply(z_j), dim=0)
-        z = torch.cat((zi, zj), dim=0)
-        
-        sim = self.similarity(z.unsqueeze(1), z.unsqueeze(0)) / self.temperature
-
-        sim_i_j = torch.diag(sim, self.N)
-        sim_j_i = torch.diag(sim, -self.N)
-
-        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(self.allN, 1)
-        negative_samples = sim[self.mask].reshape(self.allN, -1)
-
-        labels = torch.zeros(self.allN).to(positive_samples.device).long()
-        logits = torch.cat((positive_samples, negative_samples), dim=1)
-        loss = self.criterion(logits, labels)
-        loss /= self.allN
-
-        # Logging loss
-        self.log(mode + "_loss", loss, sync_dist=True, on_step=True, on_epoch=True,prog_bar=True)
-
-        return loss
     
     def normalized_temp_scaled_cross_entropy_loss(self, zi, zj) -> float:
         # z = torch.cat((zi, zj), dim=0)
         sim = self.similarity(zi, zj) / self.temperature
-
+        return sim
 
     def training_step(self, batch, batch_idx):
-        print("BATCH SHAPE", batch.shape)
+        # batch shape is list of length 2. First element is two tensors (one for each)
+        # input signal with torch.size([batch_size, 2, 512]). The second element is the
+        # class labels with torch.size([batch_size])
         (xi, xj), _ = batch
         zi, zj, hi, hj = self.forward(xi, xj)
-        print("ZI, ZJ SHAPES", zi.shape, zj.shape)
-        return 0.0
         loss = self.normalized_temp_scaled_cross_entropy_loss(zi, zj)
-        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        # self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
-        # return self.ntXent_loss(batch, mode="train")
 
     def validation_step(self, batch, batch_idx):
-        return self.ntXent_loss(batch, mode="val")
+        (xi, xj), _ = batch
+        zi, zj, hi, hj = self.forward(xi, xj)
+        loss = self.normalized_temp_scaled_cross_entropy_loss(zi, zj)
+        # self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        return loss

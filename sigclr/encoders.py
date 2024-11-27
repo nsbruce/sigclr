@@ -45,25 +45,21 @@ class EfficientNetB4Encoder(nn.Module):
         return out
 
 class ResNet50Encoder(nn.Module):
-    def __init__(self, num_output_features: int):
+    def __init__(self, in_chans: int, pretrained: bool):
         super().__init__()
-        self.num_output_features = num_output_features
-        backbone = convert_2d_model_to_1d(timm.create_model("resnet50", in_chans=2, pretrained=False))#num_classes=num_output_features))
+        model = timm.create_model("resnet50", in_chans=in_chans, pretrained=pretrained)
+        
         # remove the classification head (fully connected layer) and output embeddings
-        # instead of logits
-        backbone.reset_classifier(num_classes=0, global_pool="avg")
+        # instead of logits. The typical size of a resnet 50 embedding space is 2048
+        # which we accept here
+        model.reset_classifier(num_classes=0, global_pool="avg")
 
-        neck = nn.Sequential(
-            nn.Linear(backbone.num_features, num_output_features),
-            nn.ReLU(),
-            nn.Linear(num_output_features, num_output_features)
-        )
+        self.backbone = convert_2d_model_to_1d(model)
 
-        self.model = nn.Sequential(backbone, neck)
 
 
     def forward(self, x):
-        return self.model(x)
+        return self.backbone(x)
 
     def predict(self, x):
         with torch.no_grad():

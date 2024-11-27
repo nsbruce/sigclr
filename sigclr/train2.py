@@ -5,9 +5,19 @@ import torchsig.transforms as ST
 import torch
 import os
 import click
-from sigclr.dataset import SigCLRNarrowbandDataset
+from sigclr.dataset2 import SigCLRNarrowbandDataset
 from sigclr.sigclr2 import SigCLR
 from sigclr.modulation_classes import SIGCLR_CLASSES
+
+# import torch
+# torch.set_num_threads(1)
+# torch.set_num_interop_threads(1)
+# os.environ["OMP_NUM_THREADS"] = "1"
+# os.environ["MKL_NUM_THREADS"] = "1"
+# os.environ["NUMEXPR_NUM_THREADS"] = "1"
+# os.environ["OPENBLAS_NUM_THREADS"] = "1"
+# os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+# os.environ["TBB_NUM_THREADS"] = "1"
 
 contrast_transforms = [
     ST.TimeVaryingNoise(),
@@ -20,15 +30,11 @@ contrast_transforms = [
     ST.SpectralInversion(),
 ]
 
-assert torch.cuda.is_available()
-assert int(os.environ.get("SLURM_JOB_NUM_NODES","1")) == 1
-
-CHECKPOINT_PATH=os.getenv("CHECKPOINT_PATH")
-root_train = os.getenv("ROOT_TRAIN")
-root_val = os.getenv("ROOT_VAL")
-
 
 def setup_datasets(impaired: bool, batch_size: int):
+    root_train = os.getenv("ROOT_TRAIN")
+    root_val = os.getenv("ROOT_VAL")
+
     torch.set_float32_matmul_precision('medium')
     num_workers = os.cpu_count()//4
     torch.backends.cudnn.deterministic = True
@@ -47,7 +53,8 @@ def setup_datasets(impaired: bool, batch_size: int):
         use_signal_data=True,
         transforms=contrast_transforms
     )
-    print(f'Our training data comes from {root_train}, and has {len(train_dataset)} signals')
+    print(f'Training data comes from {root_train}, and has {len(train_dataset)} signals')
+
     # Instantiate the validation dataset
     val_dataset = SigCLRNarrowbandDataset(
         root=root_val, 
@@ -57,8 +64,7 @@ def setup_datasets(impaired: bool, batch_size: int):
         use_signal_data=True,
         transforms=contrast_transforms
     )
-
-    print(f'Our validation data comes from {root_val}, and has {len(val_dataset)} signals')
+    print(f'Validation data comes from {root_val}, and has {len(val_dataset)} signals')
 
     train_loader = DataLoader(
             train_dataset,
@@ -83,24 +89,25 @@ def setup_datasets(impaired: bool, batch_size: int):
 @click.command()
 @click.option('--batch-size', default=32, help='Batch size used during training and validation.')
 @click.option('--epochs', default=100, help='Number of epochs during training.')
-@click.option('--num-workers', default=4, help='The number of workers.')
 @click.option('--checkpoint-file', help='Restarts from the provided previous checkpointed model file.')
-def train_sigclr(batch_size, epochs, num_workers, checkpoint_file):
+def train_sigclr(batch_size, epochs, checkpoint_file):
+
+    print("CUDA is available?", torch.cuda.is_available())
+    assert int(os.environ.get("SLURM_JOB_NUM_NODES","1")) == 1
 
     lr=0.001  # for optimizer
-    hidden_dim=256  # dimension of the hidden layer
     weight_decay=1e-4  # for optimizer
     temperature=0.07  # for ntXent loss computation
     
     train_loader, val_loader = setup_datasets(impaired=False, batch_size=batch_size)
+    checkpoint_path=os.getenv("CHECKPOINT_PATH")
 
-    
-    checkpoint_callback = ModelCheckpoint(dirpath=CHECKPOINT_PATH, every_n_epochs=1, mode="min", monitor="val_loss", save_top_k=3,save_last=True)
+    checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_path, every_n_epochs=1, mode="min", monitor="val_loss", save_top_k=3,save_last=True)
 
     trainer = Trainer(
-        default_root_dir=CHECKPOINT_PATH,
+        default_root_dir=checkpoint_path,
         devices="auto",
-        accelerator="gpu",
+        accelerator="auto",
         max_epochs=epochs,
         enable_progress_bar=False,
         callbacks=checkpoint_callback,
@@ -122,11 +129,10 @@ def train_sigclr(batch_size, epochs, num_workers, checkpoint_file):
     else:
         print("No checkpoint passed. Instantiating a new model.")
         seed_everything(42)  # To be reproducable
-        model = SigCLR(hidden_dim=hidden_dim, lr=lr, temperature=temperature, weight_decay=weight_decay, batch_size=batch_size, max_epochs=epochs, device=torch.device("cuda"), num_encoder_output_features=64)
+        model = SigCLR(lr=lr, temperature=temperature, weight_decay=weight_decay)
         trainer.fit(model, train_loader, val_loader)
 
     return model
 
 if __name__ == "__main__":
-    sigclr_model = train_sigclr()
-    # what do more with the sigclr_model here as it is the best model selected.
+    train_sigclr()
