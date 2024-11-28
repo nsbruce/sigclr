@@ -3,7 +3,7 @@ from torch import optim
 import torch.nn as nn
 import torch
 from sigclr.encoders import ResNet50Encoder
-
+import torch.nn.functional as F
 
 class SigCLR(LightningModule):
     def __init__(self, lr: float, temperature: float, weight_decay: float):
@@ -18,7 +18,6 @@ class SigCLR(LightningModule):
         self.encoder.to(self.device)
 
         self.temperature = temperature
-        self.similarity = nn.CosineSimilarity(dim=1)
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
 
         # the output of the resnet 50 encoder is the embedding space of size 2048. We 
@@ -46,9 +45,22 @@ class SigCLR(LightningModule):
         return optimizer
     
     def normalized_temp_scaled_cross_entropy_loss(self, zi, zj) -> float:
-        # z = torch.cat((zi, zj), dim=0)
-        sim = self.similarity(zi, zj) / self.temperature
-        return sim
+        # zi and zj shapes are of torch.size([batch_size, 128])
+
+        # normalize embeddings to encourage a focus on the direction of the embedding not the magnitude
+        zi = F.normalize(zi, dim=1)
+        zj = F.normalize(zj, dim=1)
+
+        # need to compute the cosine similarity matrix between zi and zj, which is defined of dot product of normalized zi and zj
+        sim = torch.matmul(zi, zj.T) / self.temperature
+
+        # the class labels are just indices of the embeddings showing that each pair from zi and zj is similar and disimilar from all other pairs
+        labels = torch.arange(0, zi.size(0), device=self.device)
+
+        # the cross entropy loss is computed between the cosine similarity matrix and the class labels
+        loss = F.cross_entropy(sim, labels)
+        
+        return loss
 
     def training_step(self, batch, batch_idx):
         # batch shape is list of length 2. First element is two tensors (one for each)
@@ -57,12 +69,12 @@ class SigCLR(LightningModule):
         (xi, xj), _ = batch
         zi, zj, hi, hj = self.forward(xi, xj)
         loss = self.normalized_temp_scaled_cross_entropy_loss(zi, zj)
-        # self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         (xi, xj), _ = batch
         zi, zj, hi, hj = self.forward(xi, xj)
         loss = self.normalized_temp_scaled_cross_entropy_loss(zi, zj)
-        # self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
