@@ -45,24 +45,43 @@ class SigCLR(LightningModule):
     def normalized_temp_scaled_cross_entropy_loss(self, zi, zj) -> float:
         # zi and zj shapes are of torch.size([batch_size, 128])
 
+        print("zi and zj shapes:", zi.shape, zj.shape)
+        print("zi and zj types:", type(zi), type(zj))
+        print("zi and zj max:", zi.max(), zj.max())
+        print("zi and zj min:", zi.min(), zj.min())
         # normalize embeddings to encourage a focus on the direction of the embedding not the magnitude
         zi = F.normalize(zi, dim=1)
         zj = F.normalize(zj, dim=1)
+        print("normalized shape:", zi.shape)
+        print("normalized type:", type(zi))
+        print("normalized max:", zi.max())
+        print("normalized min:", zi.min())
 
         # need to compute the cosine similarity matrix between zi and zj, which is defined of dot product of normalized zi and zj
         sim = torch.matmul(zi, zj.T) / self.temperature
+        print("sim shape:", sim.shape)
+        print("sim type:", type(sim))
+        print("sim max:", sim.max())
+        print("sim min:", sim.min())
 
         # the class labels are just indices of the embeddings showing that each pair from zi and zj is similar and disimilar from all other pairs
         labels = torch.arange(0, zi.size(0), device=self.device)
+        print("labels shape:", labels.shape)
+        print("labels type:", type(labels))
+        print("labels max:", labels.max())
+        print("labels min:", labels.min())
 
         # the cross entropy loss is computed between the cosine similarity matrix and the class labels
         loss = F.cross_entropy(sim, labels)
-        
+        print("loss shape:", loss.shape)
+        print("loss type:", type(loss))
+        print("loss max:", loss.max())
+        print("loss min:", loss.min())
         return loss
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch: list[tuple[torch.Tensor] | torch.Tensor], batch_idx: int):
 
-        # batch shape is list of length 2. First element is two tensors (one for each)
+        # batch is a list of length 2. First element is two tensors (one for each)
         # input signal with torch.size([batch_size, 2, 512]). The second element is the
         # class labels with torch.size([batch_size])
         (xi, xj), _ = batch
