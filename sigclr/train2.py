@@ -9,15 +9,6 @@ from sigclr.dataset2 import SigCLRNarrowbandDataset
 from sigclr.sigclr2 import SigCLR
 from sigclr.modulation_classes import SIGCLR_CLASSES
 
-# import torch
-# torch.set_num_threads(1)
-# torch.set_num_interop_threads(1)
-# os.environ["OMP_NUM_THREADS"] = "1"
-# os.environ["MKL_NUM_THREADS"] = "1"
-# os.environ["NUMEXPR_NUM_THREADS"] = "1"
-# os.environ["OPENBLAS_NUM_THREADS"] = "1"
-# os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-# os.environ["TBB_NUM_THREADS"] = "1"
 
 contrast_transforms = [
     ST.TimeVaryingNoise(),
@@ -36,7 +27,7 @@ def setup_datasets(impaired: bool, batch_size: int):
     root_val = os.getenv("ROOT_VAL")
 
     torch.set_float32_matmul_precision('medium')
-    num_workers = os.cpu_count()//4
+    num_workers = os.cpu_count()-1#//4
     torch.backends.cudnn.deterministic = True
 
     print(f"Number of workers: {num_workers}")
@@ -87,12 +78,11 @@ def setup_datasets(impaired: bool, batch_size: int):
 
 
 @click.command()
-@click.option('--batch-size', default=32, help='Batch size used during training and validation.')
-@click.option('--epochs', default=100, help='Number of epochs during training.')
+@click.option('--batch-size', type=int, help='Batch size used during training and validation.')
+@click.option('--epochs', type=int, help='Number of epochs during training.')
 @click.option('--checkpoint-file', help='Restarts from the provided previous checkpointed model file.')
 def train_sigclr(batch_size, epochs, checkpoint_file):
 
-    print("CUDA is available?", torch.cuda.is_available())
     assert int(os.environ.get("SLURM_JOB_NUM_NODES","1")) == 1
 
     lr=0.001  # for optimizer
@@ -111,7 +101,10 @@ def train_sigclr(batch_size, epochs, checkpoint_file):
         max_epochs=epochs,
         enable_progress_bar=False,
         callbacks=checkpoint_callback,
+        strategy="ddp"  # from pytorch_lightning docs on running on slurm
     )
+    print("Trainer accelerator: ", trainer.accelerator.__class__.__name__)
+    print("Trainer num. devices:", trainer.num_devices)
 
     # If a pretrained model was passed, load it and train some more.
     if checkpoint_file is not None and os.path.isfile(checkpoint_file):

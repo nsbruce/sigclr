@@ -13,9 +13,7 @@ class SigCLR(LightningModule):
 
         self.encoder = ResNet50Encoder(in_chans=2, pretrained=False)
 
-        print("Device type:", self.device)
-
-        self.encoder.to(self.device)
+        # self.encoder.to(self.device)
 
         self.temperature = temperature
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
@@ -63,18 +61,19 @@ class SigCLR(LightningModule):
         return loss
 
     def training_step(self, batch, batch_idx):
+
         # batch shape is list of length 2. First element is two tensors (one for each)
         # input signal with torch.size([batch_size, 2, 512]). The second element is the
         # class labels with torch.size([batch_size])
         (xi, xj), _ = batch
         zi, zj, hi, hj = self.forward(xi, xj)
         loss = self.normalized_temp_scaled_cross_entropy_loss(zi, zj)
-        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_loss", loss, on_epoch=True, sync_dist=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         (xi, xj), _ = batch
         zi, zj, hi, hj = self.forward(xi, xj)
         loss = self.normalized_temp_scaled_cross_entropy_loss(zi, zj)
-        self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("val_loss", loss, on_epoch=True, sync_dist=True)
         return loss
