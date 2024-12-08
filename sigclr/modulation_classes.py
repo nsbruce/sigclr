@@ -20,5 +20,4 @@ SIGCLR_CLASSES: list = [
         "fm",
         "am-dsb",
         "am-usb",
-        "lfm_radar",
     ]

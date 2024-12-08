@@ -27,7 +27,10 @@ class SigCLR(LightningModule):
             nn.Linear(512, 128)
         )
 
-    def forward(self, xi, xj):
+    def forward(self, xi: torch.Tensor, xj: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        # xi and xj have shapes torch.Size([batch_size, 2, signal_length])
+
+        # hi and hj have shapes torch.Size([batch_size, 2048]) where the 2048 comes from the embedding space of the resnet50 encoder
         hi, hj = self.encoder(xi), self.encoder(xj)
         zi, zj = self.projection_head(hi), self.projection_head(hj) 
         return zi, zj, hi, hj
@@ -42,44 +45,29 @@ class SigCLR(LightningModule):
         optimizer = optim.AdamW(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
         return optimizer
     
-    def normalized_temp_scaled_cross_entropy_loss(self, zi, zj) -> float:
+    def normalized_temp_scaled_cross_entropy_loss(self, zi: torch.Tensor, zj: torch.Tensor) -> torch.Tensor:
         # zi and zj shapes are of torch.size([batch_size, 128])
 
-        print("zi and zj shapes:", zi.shape, zj.shape)
-        print("zi and zj types:", type(zi), type(zj))
-        print("zi and zj max:", zi.max(), zj.max())
-        print("zi and zj min:", zi.min(), zj.min())
         # normalize embeddings to encourage a focus on the direction of the embedding not the magnitude
+        # output shape from normalize is torch.Size([batch_size, 128]) since no dimensional change
         zi = F.normalize(zi, dim=1)
         zj = F.normalize(zj, dim=1)
-        print("normalized shape:", zi.shape)
-        print("normalized type:", type(zi))
-        print("normalized max:", zi.max())
-        print("normalized min:", zi.min())
 
         # need to compute the cosine similarity matrix between zi and zj, which is defined of dot product of normalized zi and zj
+        # output shape from matmul is torch.Size([batch_size, batch_size])
         sim = torch.matmul(zi, zj.T) / self.temperature
-        print("sim shape:", sim.shape)
-        print("sim type:", type(sim))
-        print("sim max:", sim.max())
-        print("sim min:", sim.min())
 
         # the class labels are just indices of the embeddings showing that each pair from zi and zj is similar and disimilar from all other pairs
+        # labels shape is torch.Size([batch_size])
         labels = torch.arange(0, zi.size(0), device=self.device)
-        print("labels shape:", labels.shape)
-        print("labels type:", type(labels))
-        print("labels max:", labels.max())
-        print("labels min:", labels.min())
 
         # the cross entropy loss is computed between the cosine similarity matrix and the class labels
+        # the loss is a torch.Tensor but with a shape of torch.Size([]) It's just a float wrapped in a torch.Tensor to keep it in torch-land
         loss = F.cross_entropy(sim, labels)
-        print("loss shape:", loss.shape)
-        print("loss type:", type(loss))
-        print("loss max:", loss.max())
-        print("loss min:", loss.min())
+
         return loss
 
-    def training_step(self, batch: list[tuple[torch.Tensor] | torch.Tensor], batch_idx: int):
+    def training_step(self, batch: list[tuple[torch.Tensor] | torch.Tensor], batch_idx: int) -> torch.Tensor:
 
         # batch is a list of length 2. First element is two tensors (one for each)
         # input signal with torch.size([batch_size, 2, 512]). The second element is the
@@ -90,7 +78,7 @@ class SigCLR(LightningModule):
         self.log("train_loss", loss, on_epoch=True, sync_dist=True)
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch: list[tuple[torch.Tensor] | torch.Tensor], batch_idx: int) -> torch.Tensor:
         (xi, xj), _ = batch
         zi, zj, hi, hj = self.forward(xi, xj)
         loss = self.normalized_temp_scaled_cross_entropy_loss(zi, zj)
