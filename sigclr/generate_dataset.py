@@ -19,8 +19,13 @@ class SigCLRNarrowbandCleanValConfig(conf.NarrowbandCleanValConfig):
     num_samples = len(SIGCLR_CLASSES) * 12_500
     num_iq_samples = 512
 
+@dataclass
+class SigCLRNarrowbandCleanQAConfig(conf.NarrowbandCleanTrainQAConfig):
+    seed: int = 1234567893
+    num_samples: int = len(SIGCLR_CLASSES)*2
+
 batch_size = 4096  #TODO decide?
-num_workers = os.cpu_count() // 2
+num_workers = os.cpu_count() - 1
 
 
 class SigCLRDatasetCreator(DatasetCreator):
@@ -39,7 +44,7 @@ class SigCLRDatasetCreator(DatasetCreator):
 @click.command
 @click.option("--path", default="narrowband", help="Path to generate narrowband datasets")
 def generate(path: str) -> None:
-    for config in [SigCLRNarrowbandCleanValConfig, SigCLRNarrowbandCleanTrainConfig]:
+    for config in [SigCLRNarrowbandCleanQAConfig, ]:#SigCLRNarrowbandCleanValConfig, SigCLRNarrowbandCleanTrainConfig]:
         ds = ModulationsDataset(
             classes=SIGCLR_CLASSES,
             level=config.level,
@@ -49,8 +54,8 @@ def generate(path: str) -> None:
             include_snr=config.include_snr,
             eb_no=config.eb_no,
         )
-        dataset_loader = DatasetLoader(ds, seed=12345678, collate_fn=collate_fn, num_workers=num_workers, batch_size=batch_size)
-        creator = SigCLRDatasetCreator(ds, seed=12345678, path="{}".format(os.path.join(path, config.name)), loader=dataset_loader, num_workers=num_workers)
+        dataset_loader = DatasetLoader(ds, seed=1234567893, collate_fn=collate_fn, num_workers=num_workers, batch_size=batch_size)
+        creator = SigCLRDatasetCreator(ds, seed=1234567893, path="{}".format(os.path.join(path, config.name)), loader=dataset_loader, num_workers=num_workers)
         creator.create()
     
 
