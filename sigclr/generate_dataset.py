@@ -65,7 +65,7 @@ def generate(path: str, batch_size: int, num_iq_samples: int, train: bool, val: 
     print("Datasets to generate:", [c.name for c in configs])
 
     startt = time()
-    for config in [SigCLRNarrowbandCleanValConfig, SigCLRNarrowbandCleanTrainConfig]:  #,SigCLRNarrowbandCleanQAConfig]:#, 
+    for config in configs:
         output_path = "{}".format(os.path.join(path, config.name))
 
         print("Building", output_path)
