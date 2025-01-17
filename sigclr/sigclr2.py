@@ -4,6 +4,8 @@ import torch.nn as nn
 import torch
 from sigclr.encoders import ResNet50Encoder
 import torch.nn.functional as F
+from sigclr.optimizers import LARS
+
 
 class SigCLR(LightningModule):
     def __init__(self, lr: float, temperature: float, weight_decay: float):
@@ -42,7 +44,8 @@ class SigCLR(LightningModule):
         return z, h
 
     def configure_optimizers(self):
-        optimizer = optim.AdamW(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
+        # optimizer = optim.AdamW(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
+        optimizer = LARS(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
         return optimizer
     
     def normalized_temp_scaled_cross_entropy_loss(self, zi: torch.Tensor, zj: torch.Tensor) -> torch.Tensor:
