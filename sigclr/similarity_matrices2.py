@@ -19,19 +19,19 @@ def cli():
 
 @cli.command
 @click.option("--weights-file", type=click.Path(path_type=Path))
+@click.option('--qa-path', type=click.Path(path_type=Path))
 @click.option("--save-latent-pkl", is_flag=True, type=bool, default=False)
 @click.option("--save-similarities-npy", is_flag=True, type=bool, default=False)
 @click.option('--save-html', is_flag=True, type=bool, default=False)
 @click.option('--show', is_flag=True, type=bool, default=False)
-def weights_to_similarity_matrices(weights_file: Path | None, save_latent_pkl: bool, save_similarities_npy: bool, save_html: bool, show: bool) -> None:
+def weights_to_similarity_matrices(weights_file: Path | None, qa_path: Path | None, save_latent_pkl: bool, save_similarities_npy: bool, save_html: bool, show: bool) -> None:
 
     print('loading dataset')
-    root_qa = os.getenv("ROOT_VAL","/project/def-msteve/torchsig/narrowband/qa/")
     target_transform = ST.DescToClassIndex(class_list=list(SigCLRTorchSigNarrowband._idx_to_name_dict.values()))
 
     # this contains two signals from each class
     qa_dataset = SigCLRTorchSigNarrowband(
-        root=root_qa,
+        root=qa_path,
         train=True,
         impaired=False,
         transform=None,
@@ -118,15 +118,15 @@ def weights_to_similarity_matrices(weights_file: Path | None, save_latent_pkl: b
         np.save('similarities-z.npy', similarities_z)
 
     print('plotting')
-    stem = weights_file.stem.replace('-', '_').replace('=','')
-    
+    weights_stem = weights_file.stem.replace('-', '_').replace('=','')
+    path_info = Path(qa_path).stem.replace('-', '_')
     categories = list(SigCLRTorchSigNarrowband._idx_to_name_dict.values())
     fig = make_subplots(rows=1,cols=2, subplot_titles=["h: neck", "z: projection head"], shared_xaxes=True, shared_yaxes=True)
     fig.add_trace(go.Heatmap(z=similarities_h, x=categories, y=categories), row=1, col=1)
     fig.add_trace(go.Heatmap(z=similarities_z, x=categories, y=categories), row=1, col=2)
-    fig.update_layout(title_text=stem)
+    fig.update_layout(title_text=path_info + '_' + weights_stem)
     if save_html:
-        fig.write_html(f'similarity-matrix-{stem}.html')
+        fig.write_html(f'similarity-matrix-{weights_stem}.html')
     if show:
         fig.show()
 
