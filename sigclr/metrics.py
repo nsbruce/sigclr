@@ -1,4 +1,6 @@
 import torch
+import numpy as np
+
 
 def get_kl_divergence_ws_distance(le, orig_df_test, device, best_model, orig_X):
     num_of_cell_types=len(le.classes_)
@@ -51,3 +53,19 @@ def ntXent_loss(batch):
     loss /= self.allN
 
     return loss
+
+def evaluate_similarity_matrix(similarity_matrix: np.ndarray) -> float:
+
+    assert similarity_matrix.shape[0] == similarity_matrix.shape[1]
+
+    first_term = 0
+    second_term = 0
+    for i in range(similarity_matrix.shape[0]):
+        first_term += similarity_matrix[i,i]
+        for j in range(i+1, similarity_matrix.shape[0]):
+            second_term += similarity_matrix[i,j]
+
+    first_term /= similarity_matrix.shape[0]
+    second_term *= (2 / (similarity_matrix.shape[0] * (similarity_matrix.shape[0] - 1)))
+
+    return first_term - second_term

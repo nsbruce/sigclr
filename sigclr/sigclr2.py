@@ -5,13 +5,14 @@ import torch
 from sigclr.encoders import ResNet50Encoder
 import torch.nn.functional as F
 from sigclr.optimizers import LARS
-
+from typing import Literal
 
 class SigCLR(LightningModule):
-    def __init__(self, lr: float, temperature: float, weight_decay: float):
+    def __init__(self, lr: float, temperature: float, weight_decay: float, optimizer_name: Literal['AdamW','LARS']):
         super().__init__()
         self.save_hyperparameters()
         assert self.hparams.temperature > 0.0, "The temperature must be a positive float!"
+
 
         self.encoder = ResNet50Encoder(in_chans=2, pretrained=False)
 
@@ -29,6 +30,8 @@ class SigCLR(LightningModule):
             nn.Linear(512, 128)
         )
 
+        self.optimizer_name = optimizer_name
+
     def forward(self, xi: torch.Tensor, xj: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # xi and xj have shapes torch.Size([batch_size, 2, signal_length])
 
@@ -44,10 +47,15 @@ class SigCLR(LightningModule):
         return z, h
 
     def configure_optimizers(self):
-        # optimizer = optim.AdamW(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
-        optimizer = LARS(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
-        return optimizer
-    
+        if self.optimizer_name == 'AdamW':
+            print('Configuring AdamW optimizer')
+            return optim.AdamW(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
+        elif self.optimizer_name == 'LARS':
+            print('Configuring LARS optimizer')
+            return LARS(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
+        else:
+            raise ValueError('self.optimizer_name is '+self.optimizer_name)
+
     def normalized_temp_scaled_cross_entropy_loss(self, zi: torch.Tensor, zj: torch.Tensor) -> torch.Tensor:
         # zi and zj shapes are of torch.size([batch_size, 128])
 

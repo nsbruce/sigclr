@@ -113,22 +113,24 @@ def weights_to_similarity_matrices(weights_file: Path | None, qa_path: Path | No
             # similarities[y1,y2] = similarity(torch.Tensor(x1), torch.Tensor(x2))
             similarities_z[y1,y2] = similarity(x1, x2)
 
-    if save_similarities_npy:
-        np.save('similarities-h.npy', similarities_h)
-        np.save('similarities-z.npy', similarities_z)
-
-    print('plotting')
     weights_stem = weights_file.stem.replace('-', '_').replace('=','')
-    path_info = Path(qa_path).stem.replace('-', '_')
-    categories = list(SigCLRTorchSigNarrowband._idx_to_name_dict.values())
-    fig = make_subplots(rows=1,cols=2, subplot_titles=["h: neck", "z: projection head"], shared_xaxes=True, shared_yaxes=True)
-    fig.add_trace(go.Heatmap(z=similarities_h, x=categories, y=categories), row=1, col=1)
-    fig.add_trace(go.Heatmap(z=similarities_z, x=categories, y=categories), row=1, col=2)
-    fig.update_layout(title_text=path_info + '_' + weights_stem)
-    if save_html:
-        fig.write_html(f'similarity-matrix-{weights_stem}.html')
-    if show:
-        fig.show()
+
+    if save_similarities_npy:
+        np.save(f'similarities-h-{weights_stem}.npy', similarities_h)
+        np.save(f'similarities-z-{weights_stem}.npy', similarities_z)
+
+    if save_html or show:
+        print('plotting')
+        path_info = Path(qa_path).stem.replace('-', '_')
+        categories = list(SigCLRTorchSigNarrowband._idx_to_name_dict.values())
+        fig = make_subplots(rows=1,cols=2, subplot_titles=["h: neck", "z: projection head"], shared_xaxes=True, shared_yaxes=True)
+        fig.add_trace(go.Heatmap(z=similarities_h, x=categories, y=categories), row=1, col=1)
+        fig.add_trace(go.Heatmap(z=similarities_z, x=categories, y=categories), row=1, col=2)
+        fig.update_layout(title_text=path_info + '_' + weights_stem)
+        if save_html:
+            fig.write_html(f'similarity-matrix-{weights_stem}.html')
+        if show:
+            fig.show()
 
 @cli.command
 @click.option("--npy-file", type=click.Path(path_type=Path))

@@ -8,7 +8,7 @@ import click
 from sigclr.dataset2 import SigCLRNarrowbandDataset
 from sigclr.sigclr2 import SigCLR
 from sigclr.modulation_classes import SIGCLR_CLASSES
-
+from lightning.fabric import Fabric
 
 contrast_transforms = [
     ST.TimeVaryingNoise(),
@@ -27,7 +27,8 @@ def setup_datasets(impaired: bool, batch_size: int):
     root_val = os.getenv("ROOT_VAL")
 
     torch.set_float32_matmul_precision('medium')
-    num_workers = os.cpu_count()-1#//4
+    # num_workers = os.cpu_count()-1
+    num_workers = os.cpu_count()//4
     torch.backends.cudnn.deterministic = True
 
     print(f"Number of workers: {num_workers}")
@@ -77,14 +78,7 @@ def setup_datasets(impaired: bool, batch_size: int):
     return train_loader, val_loader
 
 
-@click.command()
-@click.option('--batch-size', type=int, help='Batch size used during training and validation.')
-@click.option('--epochs', type=int, help='Number of epochs during training.')
-@click.option('--checkpoint-file', help='Restarts from the provided previous checkpointed model file.')
-def train_sigclr(batch_size, epochs, checkpoint_file):
-
-    assert int(os.environ.get("SLURM_JOB_NUM_NODES","1")) == 1
-
+def train_internal(batch_size, epochs, checkpoint_file, optimizer):
     lr=0.001  # for optimizer
     weight_decay=1e-4  # for optimizer
     temperature=0.07  # for ntXent loss computation
@@ -98,10 +92,14 @@ def train_sigclr(batch_size, epochs, checkpoint_file):
         default_root_dir=checkpoint_path,
         devices="auto",
         accelerator="auto",
+        num_nodes=int(os.environ['SLURM_JOB_NUM_NODES']),
         max_epochs=epochs,
         enable_progress_bar=False,
         callbacks=checkpoint_callback,
-        strategy="ddp"  # from pytorch_lightning docs on running on slurm
+        strategy="ddp",  # from pytorch_lightning docs about running on slurm
+        # accumulate_grad_batches=2,  # simulates larger batch size somehow
+        precision="16-mixed",
+        # sync_batchnorm=True,  # not sure if I want this or not
     )
     print("Trainer accelerator: ", trainer.accelerator.__class__.__name__)
     print("Trainer num. devices:", trainer.num_devices)
@@ -122,10 +120,28 @@ def train_sigclr(batch_size, epochs, checkpoint_file):
     else:
         print("No checkpoint passed. Instantiating a new model.")
         seed_everything(42)  # To be reproducable
-        model = SigCLR(lr=lr, temperature=temperature, weight_decay=weight_decay)
+        model = SigCLR(lr=lr, temperature=temperature, weight_decay=weight_decay, optimizer_name=optimizer)
         trainer.fit(model, train_loader, val_loader)
 
     return model
+
+@click.command()
+@click.option('--batch-size', type=int, help='Batch size used during training and validation.')
+@click.option('--epochs', type=int, help='Number of epochs during training.')
+@click.option('--checkpoint-file', help='Restarts from the provided previous checkpointed model file.')
+@click.option('--optimizer', type=str, help="Must be one of 'AdamW' or 'LARS'")
+def train_sigclr(batch_size, epochs, checkpoint_file, optimizer):
+    if not int(os.environ["SLURM_JOB_NUM_NODES"]) == 1:
+        # --gres=gpu:2 == SLURM_GPUS_ON_NODE=2, SLURM_JOB_GPUS=1,2
+        # --nodes=2 == SLURM_JOB_NUM_NODES=2, SLURM_NNODES=2
+        fabric = Fabric(accelerator="gpu", devices=int(os.environ['SLURM_GPUS_ON_NODE']), num_nodes=int(os.environ['SLURM_JOB_NUM_NODES']))
+        print("Training across", int(os.environ['SLURM_JOB_NUM_NODES'])*int(os.environ['SLURM_GPUS_ON_NODE']), 'GPUs')
+        fabric.launch(train_internal(batch_size, epochs, checkpoint_file, optimizer))
+    else:
+        print("Training on a single node")
+        train_internal(train_internal(batch_size, epochs, checkpoint_file, optimizer))
+
+
 
 if __name__ == "__main__":
     train_sigclr()
